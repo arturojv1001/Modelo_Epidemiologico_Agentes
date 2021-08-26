@@ -12,9 +12,9 @@ from tqdm import tqdm
 
 class Modelo_Epidemia:
     
-    def __init__(self,N,steps):  #inicializamos el self, con parametros globales
-        self.N = N           # numero de nodos
-        self.steps = steps   # numero de pasos o frames
+    def __init__(self,N,steps):  #initialize self, with global parameters
+        self.N = N           # number of nodes
+        self.steps = steps   # number of steps of the epidemic
         return
 
     def list_of_state(self,G,state_of_nodes):
@@ -27,30 +27,29 @@ class Modelo_Epidemia:
                         list of nodes(natural numbers) with the certain state of interest (S,I,R,D)
         '''
         
-        nodes_dict =  dict(G.nodes(data='state')) 
-        return [nodo  for (nodo,value) in nodes_dict.items() if value == state_of_nodes]
+        nodes_dict =  dict(G.nodes(data='state'))  # we obtain the dictionary with keys as nodes 
+        # then we run a loop over the keys of the dictionary to select the nodes with the respective state introduced in the functions input
+        return [nodo  for (nodo,value) in nodes_dict.items() if value == state_of_nodes] 
     
     
-    '''
-    def list_susceptible(self,G):
+    
+    def change_state(self,Nodes_of_Certain_State,G,new_state):
+        '''
+        This Function changes the state of the nodes of a certain group of nodes introduced in the input 
+            Input:
+                    Nodes_of_Certain_State - List of nodes that will change state
+                    G                      - Graph in which the nodes will change their state
+                    new_state              - the state that the nodes will change into
+            Output:
+                    G                      - Graph with the nodes states updated 
+        '''
         
-        nodes_dict =  dict(G.nodes(data='state')) 
-        return [nodo  for (nodo,value) in nodes_dict.items() if value == 'S']
-    
-    
-    
-    def list_recovered(G):
+        for nodo in Nodes_of_Certain_State:  # we make a loop through the list of the nodes that want to be changed
+            G.nodes[nodo]['state'] = new_state  # the states are changed to the input variable "new_state"
         
-        nodes_dict =  dict(G.nodes(data='state')) 
-        return [nodo  for (nodo,value) in nodes_dict.items() if value == 'R']
+        return G
     
     
-    
-    def list_deaths(G):
-        
-        nodes_dict =  dict(G.nodes(data='state')) 
-        return [nodo  for (nodo,value) in nodes_dict.items() if value == 'D']
-    '''
     
     
     def Update_State(self,G,p):
@@ -81,8 +80,8 @@ class Modelo_Epidemia:
                 else:  # it finds the susceptible neighbors ans asks if it will get infected with a probability p
                     if random.random() < p:
                         G_next.nodes[neighbor_i]['state'] = 'I'
-    
-        return G_next
+                        
+        return G_next  #The function returns the updated graph
     
     
     
@@ -97,70 +96,114 @@ class Modelo_Epidemia:
                  lst3 - intersection between fisrt and second lists
         '''
         
-        lst3 = []
-        for value in lst1:
-            if value in lst2:
-                lst3.append(value)
-        return lst3
+        lst3 = []           # we initialize the list where both lists will intersect
+        for value in lst1:      # loop through the first list
+            if value in lst2:   # if an element of the first list is also in the second list
+                lst3.append(value)  # that element is added to the list of the intersection
+        return lst3   # it returns the list of all elements that belong to both lists
     
     
     
-    def Update_State2(self,G,p,acc_inf):
+    def Update_State2(self,G_array,p_i,acc_inf,recoverable_period,p_r):
         '''
         This Function updates the state of the nodes of the graph with a stochastical process
         It selects the nodes with an infected state ('state=I') and then it makes a list of the susceptible neighbors
         of that infected node. With a binomial distribution, it then selects how many nodes will be infected by an
         infected individual. Finally, it selects a random sample from the susceptible neighbors 
-        with the size obtained by the binoamial distribution before mentioned. 
+        with the size obtained by the binoamial distribution before mentioned.
+        It also adds the accumulative amount of infected nodes in every period of time
+        Then it makes a list of infected nodes that are able (after a certain amount of periods of being infected)
+        to recover. After making that list, it selects a random sample of those infected nodes to change their
+        status from infected to revered.
     
         Input:
-                    G - the graph in the actual period of time
-                    p - probability of infection 
+                    G_array             - array of graphs of the epidemic over time 
+                    p_i                 - probability of infection 
+                    acc_inf             - accumulated number of infected nodes
+                    recoverable_period  - number of periods of time before before an infected node can recover
+                    iteration           - number of iteration(period) of the main epidemic process
+                    p_r                 - probability of recovering when infected
         Output:
-                    G_next - the graph in te next period of time 
+                    G_array             - array of graphs representing the epidemic over time 
+                    acc_inf             - updated number of accumulated infected nodes 
         '''
+        G = G_array[-1]     # select the last graph of the array 
+                            # this represents the graph of the current period of time
+        G_next = G.copy()           # create a copy of the current graph
+        iteration = len(G_array)    # the iteration or current period of time will be the same as the lenght of the array so far
     
-        G_next = G.copy()
-    
-        # Ciclo sobre el conjunto de nodos (árboles) actualmente infectados
-        for infected_node in self.list_of_state(G,'I'):
-            susceptible_neighbors = self.intersection(self.list_of_state(G,'S'), list(G.neighbors(infected_node)) )
+        
+        for infected_node in self.list_of_state(G,'I'):  # loop through the list of current infected nodes
+        # we obtain the list of suceptible neighbors of each infected node by intersecting the list 
+        # of susceptible nodes and the list of the neighbors of an infected node
+            susceptible_neighbors = self.intersection(self.list_of_state(G_next,'S'), list(G_next.neighbors(infected_node)) )
             
-            if len(susceptible_neighbors) == 0:
-                continue
+            if len(susceptible_neighbors) == 0:     # if the infected node has no susceptible neighbors
+                continue                            # we continue through the loop to the next infected node
             else:
-                num_vecinos_contagiados_i = np.random.binomial(len(susceptible_neighbors), p)  
-                acc_inf = acc_inf + num_vecinos_contagiados_i
-                if num_vecinos_contagiados_i == 0:         # si no se contagia a nadie en ese periodo
+                # if the infected node has at least one suscpetible neighbor 
+                # first we obtain the number of neighbors that will get infected by an infected node with a binomial process
+                
+            # binomial with parameters n=number of susceptible neighbors and p=probability of infection (introduced in the input)
+                num_new_inf_neighbors = np.random.binomial(len(susceptible_neighbors), p_i)   
+                
+                if num_new_inf_neighbors == 0:   # if a node doesn´t infect anyone we continue through the loop of infected nodes
                     continue      
                 else:
-                    vecinos_contagiados_i = random.sample(susceptible_neighbors, num_vecinos_contagiados_i)
-    
-    
-                for neighbor_i in vecinos_contagiados_i:
-                    G_next.nodes[neighbor_i]['state'] = 'I'
+                # we select a random sample from the susceptible neighbors of the size of "num_new_inf_neighbors" 
+                    new_inf_neighbors = random.sample(susceptible_neighbors, num_new_inf_neighbors)
+                # the number of accumulated infected is updated by adding the number of new infected by a node
+                    acc_inf = acc_inf + num_new_inf_neighbors
+                # we change the state of the new infected from 'S' susceptible to 'I' infected
+                    self.change_state(new_inf_neighbors,G_next,'I')
+                    
+                    
+        ###################################  RECOVERING SECTION #############################################
+        ###############################################################################################
+        if iteration >= recoverable_period:         # if the period of time is smaller than the recoverable period, no nodes can recover yet
+            Possible_Recovered = self.list_of_state(G_next,'I')  # we initialize "Possible_Recovered" as the list of current infected 
+            
+        # loop to obtain the list of nodes that are currently infected and were infected up until
+        # a "recoverable_period" in the past
+            for i in range(0,recoverable_period):    
+            #Update the Possible Recovered by intersecting that list with the list of nodes that were infected i periods in the past
+                Possible_Recovered = self.intersection(self.n_steps_before_state(G_array,'I',i), Possible_Recovered)
+            
+            if len(Possible_Recovered)!=0:  #if there are nodes that can recover from infection
+            # with a binomial process we obtain the number of infected nodes that will recover 
+                
+            # binomial with parameters n=number of nodes that can recover and p=probability of recovering (introduced in the input)
+                num_recovered = np.random.binomial(len(Possible_Recovered), p_r)
+            # we select a random sample from the Possible Recovered nodes with the size of "num_recovered"     
+                Recovered = random.sample(Possible_Recovered,num_recovered)
+            # we change the state of the nodes that recover from 'I' infected to 'R' recovered
+                self.change_state(Recovered,G_next,'R')
+        # the Graph is updated by changing the state of the new infected and the recovered nodes
+        G_array.append(G_next)
         
-        return G_next,acc_inf
+        return G_array,acc_inf
     
     
-    def Epi_Evolution(self,G0,p):
+    def Epi_Evolution(self,G0,p_i,r_period,p_r):
     
         """ Function to simulate the course of the epidemic over a period of time. 
     
             Input: 
-                G0     - Initial Graph
-                steps  - number of steps of the simulation
+                G0        - Initial Graph
+                p_i       - probability of getting infected
+                r_period  - number of periods of time before before an infected node can recover
+                p_r       - probability of recovering when being infected
             Output:
-                Gtrack  - array in which every entry is the updated graph en each step of the epidemic
+                Gtrack              - array in which every entry is the updated graph en each step of the epidemic
+                Accumulative_count  - array of accumulative number of infected nodes over time
         """
     
-        Gtrack = [G0]
-        acc_inf = 1
-        Accumulative_count = [acc_inf]
+        Gtrack = [G0]   # initialize the array of graphs with the initial graph(introduced in the input)
+        acc_inf = len(self.list_of_state(G0,'I'))   # initialize the number of accumulated infections with the number of infected in the initial graph
+        Accumulative_count = [acc_inf]      # initialize the general array of accumulated infectections over time
         for step_i in tqdm(range(1,self.steps)):
-            graph_to_append, acc_inf = self.Update_State2(Gtrack[step_i-1],p,acc_inf)
-            Accumulative_count.append(acc_inf)
-            Gtrack.append( graph_to_append ) 
+            Gtrack, acc_inf = self.Update_State2(Gtrack,p_i,acc_inf,r_period,p_r)   #Update the Graphs and number of accumulated infections in every period of time
+            Accumulative_count.append(acc_inf)      # Add the number of accumulated infections of every period to the general array 
     
         return Gtrack, Accumulative_count
     
@@ -234,7 +277,7 @@ class Modelo_Epidemia:
     
         Input:
                     Graph_Array       - Array that contains each graph updated every period of time in the epidemic
-                    state_od_nodes    - State of the nodes that are being searched for 
+                    state_of_nodes    - String of State of the nodes that are being searched for 
                     n_steps           - Number of steps into the past where the searching will occur
     
         Output:
@@ -242,15 +285,52 @@ class Modelo_Epidemia:
     
         '''
         
-        total_lenght = len(Graph_Array)
-        if n_steps>=total_lenght:
-            return
-        
-        G = Graph_Array[total_lenght-1 - n_steps]
-        searched_nodes = self.list_of_state(G,state_of_nodes)
+        total_lenght = len(Graph_Array)     # obtain the lenght of the array of graphs from the input
+    # obtain the graph of the epidemic "n_steps" in the past from the current period
+        G = Graph_Array[total_lenght-1 - n_steps]   
+    # once the graph is obtained, it searches for the list of nodes with a certain state in that graph
+        searched_nodes = self.list_of_state(G,state_of_nodes)  # the state that it´s being searched for is defined in the input of the function
         
         return searched_nodes
 
+
+
+class Plot_Data_Epidemic(Modelo_Epidemia):
+    
+    def __init__(self,G_path):
+        self.G_path = G_path
+        return
+    
+    def Accumulative_Infected(self,Acc_I):
+        '''
+        Function to graph the Accumulated Infections in every period of time of the epidemic
+        It requires the array of Accumulated Infections in the input
+
+        '''
+        plt.figure()
+        plt.title("Acumulated Infected Nodes Over Time")
+        plt.plot(Acc_I)
+        plt.xlabel("Tiempo")
+        plt.ylabel("Accumulated Infections")
+        return
+    
+    def Active_Infected(self):
+        '''
+        Function to graph the Current Infected nodes in every period of time in the Epidemic
+        it requires in the input the array of the graphs of the epidemic over time
+
+        '''
+        active_infected = []  # initialize the array with the current infected in every period of time
+        for g in self.G_path:
+        # the number of current infected in each period will be the same as the lenght of the list of the infected
+            active_infected.append( len(self.list_of_state(g,'I')) )
+            
+        plt.figure()
+        plt.plot(active_infected,'r')
+        plt.title("Active Infected Nodes Over Time")
+        plt.xlabel("Tiempo")
+        plt.ylabel("Active Infected")
+        return
 
 ########################################################################################################################################################################
 ########################################################################################################################################################################
